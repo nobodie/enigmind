@@ -16,6 +16,20 @@ pub enum Operator {
     SumAbove(u8),
 }
 
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Operator::Pair => write!(f, "even"),
+            Operator::Impair => write!(f, "odd"),
+            Operator::Lowest => write!(f, "lowest"),
+            Operator::Highest => write!(f, "highest"),
+            Operator::SumBelow(_) => write!(f, "below"),
+            Operator::SumEquals(_) => write!(f, "equal to"),
+            Operator::SumAbove(_) => write!(f, "above"),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
 
 pub enum Rule {
@@ -153,7 +167,10 @@ impl Rule {
                 | Operator::SumEquals(value)
                 | Operator::SumAbove(value) => {
                     v.push((
-                        "Said column(s) sum is below, equal or above value".to_string(),
+                        format!(
+                            "Column(s) {} sum is below, equal or above {}",
+                            columns, *value
+                        ),
                         vec![
                             Rule::MatchesOp(Operator::SumBelow(*value), columns.clone()),
                             Rule::MatchesOp(Operator::SumEquals(*value), columns.clone()),
@@ -163,7 +180,7 @@ impl Rule {
                     ));
 
                     v.push((
-                        "The sum of columns is below, equal or above value".to_string(),
+                        format!("Sum of {} columns is {} {}", columns.len(), *op, *value),
                         gc.get_column_combinations(columns.len() as u8)
                             .iter()
                             .map(|cs| Rule::MatchesOp(*op, cs.clone()))
@@ -178,7 +195,7 @@ impl Rule {
                 }
 
                 v.push((
-                    "There are X columns that equals value".to_string(),
+                    format!("There are X columns that equals {}", *value),
                     equal_rules.into(),
                 ));
             }

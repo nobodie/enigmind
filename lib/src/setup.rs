@@ -26,14 +26,27 @@ pub struct GameConfiguration {
 
 #[derive(Serialize, Deserialize)]
 pub struct Game {
-    pub gc: GameConfiguration,
+    pub configuration: GameConfiguration,
     pub criterias: Criterias,
     pub code: Code,
 }
 
+impl Game {
+    pub fn is_solution_compatible(&self, code: &Code) -> bool {
+        if code.0.len() != self.configuration.column_count as usize {
+            return false;
+        }
+
+        if code.0.iter().any(|&f| f >= self.configuration.base) {
+            return false;
+        }
+        true
+    }
+}
+
 impl fmt::Display for Game {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Game : {}", self.gc)?;
+        writeln!(f, "Game : {}", self.configuration)?;
         write!(f, "{}", self.criterias)?;
         write!(f, "Code to find : {}", self.code)
     }
@@ -135,11 +148,15 @@ impl fmt::Display for GameConfiguration {
     }
 }
 
-fn generate_game_configuration(base: u8, column_count: u8) -> GameConfiguration {
+fn generate_game_configuration(
+    base: u8,
+    column_count: u8,
+    difficulty_pct: u8,
+) -> GameConfiguration {
     GameConfiguration {
         column_count,
         base,
-        min_difficulty: 0,
+        min_difficulty: difficulty_pct.clamp(0, 100),
     }
 }
 
@@ -282,8 +299,12 @@ fn generate_criterias(
     criterias
 }
 
-pub fn generate_game(base: u8, column_count: u8) -> Result<Game, EnigmindError> {
-    let gc = generate_game_configuration(base, column_count);
+pub fn generate_game(
+    base: u8,
+    column_count: u8,
+    difficulty_pct: u8,
+) -> Result<Game, EnigmindError> {
+    let gc = generate_game_configuration(base, column_count, difficulty_pct);
     let rules = generate_rules(&gc)?;
 
     println!(
@@ -326,7 +347,7 @@ pub fn generate_game(base: u8, column_count: u8) -> Result<Game, EnigmindError> 
 
     //generate game object from criterias, secret code and game configuration
     Ok(Game {
-        gc,
+        configuration: gc,
         criterias: criterias.into(),
         code,
     })

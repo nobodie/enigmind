@@ -14,9 +14,8 @@ use enigmind_lib::setup::generate_game;
 async fn main() -> anyhow::Result<()> {
     // build our application with a single route
     let app = Router::new()
-        .route("/", get(hello))
         .route("/generate", get(generate))
-        .route("/handshake", get(handshake));
+        .route("/ping", get(ping));
 
     // run it with hyper on localhost:3000
 
@@ -27,15 +26,7 @@ async fn main() -> anyhow::Result<()> {
     exit(0);
 }
 
-async fn hello(Query(params): Query<HashMap<String, String>>) -> String {
-    let mut s = "Parameters :\n".to_string();
-    for p in params {
-        s.push_str(format!("{} : {}\n", p.0, p.1).as_str());
-    }
-    s
-}
-
-async fn handshake() -> Response {
+async fn ping() -> Response {
     Json("ok").into_response()
 }
 
@@ -50,8 +41,9 @@ fn extract_u8_param_or(params: &HashMap<String, String>, name: &str, default: u8
 async fn generate(Query(params): Query<HashMap<String, String>>) -> Response {
     let base = extract_u8_param_or(&params, "base", 5);
     let column_count = extract_u8_param_or(&params, "column_count", 3);
+    let difficulty_pct = extract_u8_param_or(&params, "difficulty_pct", 10);
 
-    match generate_game(base, column_count) {
+    match generate_game(base, column_count, difficulty_pct) {
         Ok(game) => Json(game).into_response(),
         Err(e) => Json(e.to_string()).into_response(),
     }
