@@ -22,6 +22,20 @@ impl From<u32> for Code {
     }
 }
 
+impl From<String> for Code {
+    fn from(value: String) -> Self {
+        let mut v = Vec::new();
+
+        for c in value.chars() {
+            if c.is_ascii_digit() {
+                v.push(c.to_digit(10).unwrap_or(0) as u8);
+            }
+        }
+
+        Code::new(v)
+    }
+}
+
 impl Code {
     pub fn new(v: Vec<u8>) -> Self {
         Self(v)
@@ -54,6 +68,12 @@ impl Code {
         }
         code_vec.reverse();
         Code::new(code_vec)
+    }
+}
+
+impl PartialEq for Code {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 }
 
