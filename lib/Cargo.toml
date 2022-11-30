@@ -1,0 +1,12 @@
+[package]
+name = "enigmind-lib"
+version = "1.0.0"
+edition = "2021"
+
+
+[dependencies]
+itertools = "0.10.5"
+nbitmask = { git = "https://github.com/nobodie/nbitmask.git", features = ["serde"] }
+pad = "0.1.6"
+rand = "0.8.5"
+serde = { version = "1.0.147", features = ["derive"] }
