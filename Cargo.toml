@@ -1,4 +1,3 @@
 [workspace]
 
-members = [
-"lib", "server", "client"]
+members = ["lib", "server", "client", "client-tui"]

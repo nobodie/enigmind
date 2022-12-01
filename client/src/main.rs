@@ -106,20 +106,20 @@ async fn get_game_data(base: u8, column_count: u8) -> Result<Game, anyhow::Error
         .map_err(|reqwest_err| reqwest_err.into())
 }
 
-enum MainAction {
+enum Action {
     TestCode,
     ProposeSolution,
     Quit,
 }
 
-impl From<u8> for MainAction {
+impl From<u8> for Action {
     fn from(value: u8) -> Self {
         if value == 1 {
-            MainAction::TestCode
+            Action::TestCode
         } else if value == 2 {
-            MainAction::ProposeSolution
+            Action::ProposeSolution
         } else {
-            MainAction::Quit
+            Action::Quit
         }
     }
 }
@@ -172,11 +172,11 @@ async fn main() -> Result<()> {
         println!("  2- Propose a solution");
         println!("  3- Quit ");
 
-        let main_action: MainAction =
+        let main_action: Action =
             read_from_terminal::<u8>("What do you want to do [1-3]: ".to_string(), 1, 5).into();
 
         match main_action {
-            MainAction::TestCode => {
+            Action::TestCode => {
                 let code_test =
                     read_valid_code_from_terminal("Your code to test : ".to_string(), &game);
 
@@ -216,7 +216,7 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            MainAction::ProposeSolution => {
+            Action::ProposeSolution => {
                 let solution = read_valid_code_from_terminal("Your solution : ".to_string(), &game);
 
                 if solution == game.code {
@@ -230,7 +230,7 @@ async fn main() -> Result<()> {
                     println!("Wrong answer !");
                 }
             }
-            MainAction::Quit => quit = true,
+            Action::Quit => quit = true,
         };
     }
 
