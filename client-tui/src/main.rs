@@ -1,13 +1,17 @@
 use std::{
     fmt::Display,
-    io::stdout,
+    io::{stdout, Write},
     sync::mpsc::{channel, Receiver, RecvError, Sender},
     thread,
     time::Duration,
 };
 
 use anyhow::Result;
-use crossterm::event::{self, KeyCode, KeyEvent};
+use crossterm::{
+    event::{self, EnableMouseCapture, KeyCode, KeyEvent, MouseButton},
+    ExecutableCommand,
+};
+use enigmind_lib::setup::{generate_game, Game};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -24,73 +28,147 @@ pub struct GameLog {
 }
 
 impl GameLog {
-    pub fn new(code: &str, crit_index: u8, result: Status) -> Self {
+    pub fn new(code: &str, crit_index: u8, res: bool) -> Self {
         Self {
             code: code.to_string(),
             crit_index,
-            result,
+            result: Status(Some(res)),
         }
     }
 }
 
 #[derive(Clone, Copy)]
 
-pub enum Status {
-    True,
-    False,
-    Unchecked,
-}
+pub struct Status(Option<bool>);
 
 impl From<Status> for Color {
     fn from(value: Status) -> Self {
-        match value {
-            Status::True => Color::Green,
-            Status::False => Color::Red,
-            Status::Unchecked => Color::DarkGray,
+        match value.0 {
+            None => Color::DarkGray,
+            Some(true) => Color::Green,
+            Some(false) => Color::Red,
         }
     }
 }
 
 impl Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Status::True => write!(f, "Right"),
-            Status::False => write!(f, "Wrong"),
-            Status::Unchecked => write!(f, "     "),
+        match self.0 {
+            None => write!(f, "     "),
+            Some(true) => write!(f, "Right"),
+            Some(false) => write!(f, "Wrong"),
         }
     }
 }
 
 pub struct GameData {
-    pub criterias: Vec<(String, Status)>,
+    pub game: Game,
     pub logs: Vec<GameLog>,
-    pub base: u8,
-    pub column_count: u8,
+    pub command_line: String,
+    pub last_command_line: String,
+    pub command_result: Option<bool>,
+    pub quit: bool,
 }
 
 impl GameData {
-    pub fn new(base: u8, column_count: u8) -> Self {
+    pub fn new(game: Game) -> Self {
         Self {
-            criterias: Vec::new(),
+            game,
             logs: Vec::new(),
-            base,
-            column_count,
+            command_line: String::new(),
+            last_command_line: String::new(),
+            command_result: None,
+            quit: false,
         }
     }
 
-    pub fn add_criteria(&mut self, crit: &str) {
-        self.criterias.push((crit.to_string(), Status::Unchecked));
+    pub fn process_commands(&mut self) {
+        self.command_result = Some(false);
+        self.last_command_line = self.command_line.clone();
+
+        if self.command_line.starts_with("/quit") {
+            self.process_quit_command();
+        } else if self.command_line.starts_with("/test") {
+            self.process_test_command();
+        } else if self.command_line.starts_with("/bid") {
+            self.process_bid_command();
+        }
     }
 
-    pub fn add_log(&mut self, game_log: GameLog) {
-        self.criterias[game_log.crit_index as usize].1 = game_log.result;
-        self.logs.push(game_log);
+    fn process_quit_command(&mut self) {
+        self.command_line = String::new();
+        self.command_result = Some(true);
+        self.quit = true;
+    }
+
+    fn process_test_command(&mut self) {
+        self.command_result = Some(false);
+        let mut args = self.command_line.split(' ');
+        args.next();
+        let code_str = args.next().unwrap_or("");
+        let criterias = args.next().unwrap_or("");
+        if code_str.is_empty() || criterias.is_empty() {
+            return;
+        }
+        let code = code_str.to_string().into();
+        if !self.game.is_solution_compatible(&code) {
+            return;
+        }
+        for crit in criterias.chars() {
+            if !crit.is_numeric() {
+                return;
+            }
+
+            let num = crit.to_digit(10);
+
+            match num {
+                Some(n) => {
+                    if n as usize >= self.game.criterias.len() {
+                        return;
+                    }
+                }
+                None => return,
+            };
+        }
+        for crit in criterias.chars() {
+            let crit_index = crit.to_digit(10).unwrap();
+
+            let res = self.game.criterias[crit_index as usize]
+                .verif
+                .rule
+                .evaluate(code.clone())
+                .unwrap();
+
+            self.logs
+                .push(GameLog::new(code_str, crit_index as u8, res));
+        }
+        self.command_result = Some(true);
+        self.command_line = String::new();
+    }
+
+    fn process_bid_command(&mut self) {
+        self.command_result = Some(false);
+        let mut args = self.command_line.split(' ');
+        args.next();
+        let solution_str = args.next().unwrap_or("");
+        if solution_str.is_empty() {
+            return;
+        }
+        let solution = solution_str.to_string().into();
+        if !self.game.is_solution_compatible(&solution) {
+            return;
+        }
+
+        self.command_result = Some(self.game.code == solution);
+        self.command_line = String::new();
     }
 }
 
 pub enum InputEvent {
     /// An input event occurred.
     Input(KeyEvent),
+    ///
+    LeftClick(u16, u16),
     /// An tick event occurred.
     Tick,
 }
@@ -106,13 +184,27 @@ impl Events {
         let (tx, rx) = channel();
 
         let event_tx = tx.clone(); // the thread::spawn own event_tx
+
         thread::spawn(move || {
             loop {
                 // poll for tick rate duration, if no event, sent tick event.
                 if crossterm::event::poll(tick_rate).unwrap() {
-                    if let event::Event::Key(key) = event::read().unwrap() {
-                        event_tx.send(InputEvent::Input(key)).unwrap();
-                    }
+                    match event::read().unwrap() {
+                        event::Event::Key(key) => event_tx.send(InputEvent::Input(key)).unwrap(),
+                        event::Event::Mouse(mouse_event) => {
+                            if let event::MouseEventKind::Down(MouseButton::Left) = mouse_event.kind
+                            {
+                                dbg!(mouse_event);
+                                event_tx
+                                    .send(InputEvent::LeftClick(
+                                        mouse_event.column,
+                                        mouse_event.row,
+                                    ))
+                                    .unwrap();
+                            }
+                        }
+                        _ => (),
+                    };
                 }
                 event_tx.send(InputEvent::Tick).unwrap();
             }
@@ -134,11 +226,36 @@ where
 {
     let size = frame.size();
 
+    let solution_vert_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage(50),
+                Constraint::Length(3),
+                Constraint::Percentage(50),
+            ]
+            .as_ref(),
+        )
+        .split(size);
+
+    let solution_horiz_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Ratio(1, 2),
+                Constraint::Length(20),
+                Constraint::Ratio(1, 2),
+            ]
+            .as_ref(),
+        )
+        .split(solution_vert_layout[1]);
+
     let general_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             [
                 Constraint::Length(3), // Title
+                Constraint::Length(3), // Rules
                 Constraint::Min(10),   // Criterias + tries
                 Constraint::Length(3), // Command line
             ]
@@ -155,7 +272,18 @@ where
             ]
             .as_ref(),
         )
-        .split(general_layout[1]);
+        .split(general_layout[2]);
+
+    let tries_strikes_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Min(10),                                       // tries
+                Constraint::Length(2 + gd.game.configuration.base as u16), // strikes
+            ]
+            .as_ref(),
+        )
+        .split(game_layout[1]);
 
     // Render everything from top to bottom
     render_block_with_title(
@@ -163,22 +291,75 @@ where
         general_layout[0],
         "",
         format!("Welcome to EnigMind v {}", env!("CARGO_PKG_VERSION")).as_str(),
+        Color::White,
     );
-    render_criterias(frame, gd, game_layout[0]);
-    render_tries(frame, gd, game_layout[1]);
+
     render_block_with_title(
         frame,
-        general_layout[2],
+        general_layout[1],
+        "Rules",
+        format!(
+            "You must find a code of {} digits between 0 and {}",
+            gd.game.configuration.column_count,
+            gd.game.configuration.base - 1
+        )
+        .as_str(),
+        Color::White,
+    );
+
+    render_criterias(frame, gd, game_layout[0]);
+
+    render_tries(frame, gd, tries_strikes_layout[0]);
+    render_block_with_title(
+        frame,
+        tries_strikes_layout[1],
+        "Strikes",
+        "444\n333\n222\n111\n000",
+        Color::White,
+    );
+
+    let command_line_color = match gd.command_result {
+        None => Color::DarkGray,
+        Some(true) => Color::Green,
+        Some(false) => Color::Red,
+    };
+
+    render_block_with_title(
+        frame,
+        general_layout[3],
         "Command line (/test <code> <crits>) (/bid <solution>) (/quit)",
-        "/test 012 12",
+        &gd.command_line,
+        command_line_color,
+    );
+
+    clear_block(frame, solution_horiz_layout[1]);
+
+    render_block_with_title(
+        frame,
+        solution_horiz_layout[1],
+        "Solution",
+        "Bravo",
+        Color::Green,
     );
 }
 
-fn render_block_with_title<B>(frame: &mut Frame<B>, rect: Rect, title: &str, text: &str)
+fn render_block_with_title<B>(frame: &mut Frame<B>, rect: Rect, title: &str, text: &str, col: Color)
 where
     B: Backend,
 {
-    frame.render_widget(draw_block_with_title(title, text, Color::White), rect);
+    frame.render_widget(draw_block_with_title(title, text, col), rect);
+}
+
+fn clear_block<B>(frame: &mut Frame<B>, rect: Rect)
+where
+    B: Backend,
+{
+    let line: String = (0..rect.width).map(|_| " ").collect();
+    let filler = vec![line; rect.height as usize].join("\n");
+
+    let p = Paragraph::new(filler).style(Style::default());
+
+    frame.render_widget(p, rect);
 }
 
 fn render_tries<B>(frame: &mut Frame<B>, gd: &GameData, rect: Rect)
@@ -192,7 +373,7 @@ fn render_criterias<B>(frame: &mut Frame<B>, gd: &GameData, rect: Rect)
 where
     B: Backend,
 {
-    let crit_count = gd.criterias.len();
+    let crit_count = gd.game.criterias.len();
     let crit_grid_x = ((crit_count as f64 - 1.0).sqrt() as usize) + 1;
     let crit_grid_y = ((crit_count - 1) / crit_grid_x) + 1;
     let mut constraints_y = Vec::new();
@@ -216,15 +397,15 @@ where
 
         crit_array.push(crit_column);
     }
-    for (id, (crit_desc, last_status)) in gd.criterias.iter().enumerate() {
+    for (id, crit) in gd.game.criterias.iter().enumerate() {
         let line = id / crit_grid_x;
         let col = id % crit_grid_x;
 
         frame.render_widget(
             draw_block_with_title(
                 format!("Criteria {}", id).as_str(),
-                crit_desc,
-                (*last_status).into(),
+                crit.description.as_str(),
+                Color::Gray,
             ),
             crit_array[line][col],
         );
@@ -284,38 +465,53 @@ fn draw_block_with_title<'a>(title: &'a str, text: &'a str, border_colour: Color
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default() /*.fg(Color::Red)*/)
-                .style(Style::default().fg(border_colour))
+                .border_style(Style::default())
+                .style(
+                    Style::default()
+                        .fg(border_colour)
+                        .add_modifier(Modifier::empty()),
+                )
                 .border_type(BorderType::Plain)
                 .title(title),
         )
 }
 
-pub fn start_ui(gd: &GameData) -> Result<()> {
+pub fn start_ui(gd: &mut GameData) -> Result<()> {
     // Configure Crossterm backend for tui
-    let stdout = stdout();
+    let mut stdout = stdout();
+    stdout.execute(EnableMouseCapture)?;
+    stdout.flush()?;
     crossterm::terminal::enable_raw_mode()?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
-    terminal.hide_cursor()?;
+    //terminal.hide_cursor()?;
+    terminal.backend_mut().execute(EnableMouseCapture)?;
 
     let tick_rate = Duration::from_millis(200);
     let events = Events::new(tick_rate);
 
-    loop {
+    while !gd.quit {
         // Render
         terminal.draw(|rect| draw(rect, gd))?;
         // Handle inputs
 
         // Check if we should exit
-        match events.next()? {
-            InputEvent::Input(key_event) => {
-                if key_event.code == KeyCode::Esc {
-                    break;
+        if let InputEvent::Input(key_event) = events.next()? {
+            match key_event.code {
+                KeyCode::Esc => break,
+                KeyCode::Char(c) => {
+                    gd.command_line.push(c);
+                    gd.command_result = None
                 }
+                KeyCode::Backspace => {
+                    gd.command_line.pop();
+                    gd.command_result = None;
+                }
+                KeyCode::Up => gd.command_line = gd.last_command_line.clone(),
+                KeyCode::Enter => gd.process_commands(),
+                _ => (),
             }
-            InputEvent::Tick => (),
         }
     }
 
@@ -328,18 +524,10 @@ pub fn start_ui(gd: &GameData) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    //let app = Rc::new(RefCell::new(App::new())); // TODO app is useless for now
+    let game = generate_game(5, 3, 10).unwrap();
 
-    let mut gd = GameData::new(5, 3);
-    gd.add_criteria("A is the lowest");
-    gd.add_criteria("B is equal to 1");
-    gd.add_criteria("Two columns have the same value");
+    let mut gd = GameData::new(game);
 
-    //gd.add_log(GameLog::new("012", 'B', true));
-    gd.add_log(GameLog::new("012", 1, Status::True));
-    gd.add_log(GameLog::new("012", 2, Status::False));
-    //gd.add_log(GameLog::new("011", 'C', true));
-
-    start_ui(&gd)?;
+    start_ui(&mut gd)?;
     Ok(())
 }

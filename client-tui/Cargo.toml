@@ -9,3 +9,4 @@ edition = "2021"
 tui = { version = "0.19.0", features = ["crossterm"], default-features = false }
 crossterm = "0.25.0"
 anyhow = "1.0.66"
+enigmind-lib = { path = "../lib" }
