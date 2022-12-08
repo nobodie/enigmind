@@ -16,7 +16,7 @@ impl From<BitMaskError> for EnigmindError {
 impl fmt::Display for EnigmindError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
-            EnigmindError::BitmaskError(err) => write!(f, "{}", err),
+            EnigmindError::BitmaskError(err) => write!(f, "{err}"),
             EnigmindError::ColumnIndexOutOfBounds => write!(f, "ColumnIndexOutOfBounds"),
         }
     }

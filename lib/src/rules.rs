@@ -41,7 +41,7 @@ impl Deref for Rules {
 impl fmt::Display for Rules {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for r in &self.0 {
-            writeln!(f, "{}", r)?;
+            writeln!(f, "{r}")?;
         }
         Ok(())
     }

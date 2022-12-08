@@ -67,7 +67,7 @@ impl fmt::Display for ColumnSet {
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", r)?;
+            write!(f, "{r}")?;
             first = false;
         }
         write!(f, "]")?;

@@ -207,19 +207,19 @@ impl Rule {
 impl fmt::Display for Rule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let text = match self {
-            Rule::XColumnsEquals(count, value) => format!("XColumnsEquals({}, {})", count, value),
+            Rule::XColumnsEquals(count, value) => format!("XColumnsEquals({count}, {value})"),
 
             Rule::MatchesOp(op, columns) => match op {
-                Operator::Lowest => format!("IsLowest({})", columns),
-                Operator::Highest => format!("IsHighest({})", columns),
-                Operator::Pair => format!("IsPair({})", columns),
-                Operator::Impair => format!("IsImpair({})", columns),
-                Operator::SumBelow(value) => format!("SumBelow({}, {})", columns, value),
-                Operator::SumEquals(value) => format!("SumEquals({}, {})", columns, value),
-                Operator::SumAbove(value) => format!("SumAbove({}, {})", columns, value),
+                Operator::Lowest => format!("IsLowest({columns})"),
+                Operator::Highest => format!("IsHighest({columns})"),
+                Operator::Pair => format!("IsPair({columns})"),
+                Operator::Impair => format!("IsImpair({columns})"),
+                Operator::SumBelow(value) => format!("SumBelow({columns}, {value})"),
+                Operator::SumEquals(value) => format!("SumEquals({columns}, {value})"),
+                Operator::SumAbove(value) => format!("SumAbove({columns}, {value})"),
             },
         };
 
-        write!(f, "{}", text)
+        write!(f, "{text}")
     }
 }

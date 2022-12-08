@@ -16,7 +16,7 @@ impl fmt::Display for Criteria {
         writeln!(f, "Criteria : {}.", self.description)?;
         writeln!(f, "Rules : {} {}.", self.verif.rule, self.verif.mask)?;
         for rule in self.rules.iter() {
-            write!(f, "\t{}", rule)?;
+            write!(f, "\t{rule}")?;
             if *rule == self.verif.rule {
                 write!(f, " (*)")?;
             }

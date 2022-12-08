@@ -48,7 +48,7 @@ impl Deref for Verificators {
 impl fmt::Display for Verificators {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for v in &self.0 {
-            writeln!(f, "{}", v)?;
+            writeln!(f, "{v}")?;
         }
         Ok(())
     }

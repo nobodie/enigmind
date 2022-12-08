@@ -42,7 +42,7 @@ impl Deref for Criterias {
 impl fmt::Display for Criterias {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for c in &self.0 {
-            write!(f, "{}", c)?;
+            write!(f, "{c}")?;
         }
         Ok(())
     }

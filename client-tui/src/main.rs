@@ -403,7 +403,7 @@ where
 
         frame.render_widget(
             draw_block_with_title(
-                format!("Criteria {}", id).as_str(),
+                format!("Criteria {id}").as_str(),
                 crit.description.as_str(),
                 Color::Gray,
             ),

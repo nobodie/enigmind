@@ -18,7 +18,7 @@ where
 {
     let mut input = String::new();
     loop {
-        print!("{}", text);
+        print!("{text}");
         io::stdout().flush().unwrap();
         input.clear();
         std::io::stdin().read_line(&mut input).unwrap_or(0);
@@ -34,7 +34,7 @@ where
 pub fn read_bool_from_terminal(text: String) -> bool {
     let mut input = String::new();
     loop {
-        print!("{}", text);
+        print!("{text}");
         io::stdout().flush().unwrap();
         input.clear();
         std::io::stdin().read_line(&mut input).unwrap_or(0);
@@ -50,7 +50,7 @@ pub fn read_bool_from_terminal(text: String) -> bool {
 
 pub fn read_string_from_terminal(text: String) -> String {
     let mut input = String::new();
-    print!("{}", text);
+    print!("{text}");
     io::stdout().flush().unwrap();
     input.clear();
     std::io::stdin().read_line(&mut input).unwrap_or(0);
@@ -80,7 +80,7 @@ async fn server_availability_check() -> Result<bool> {
     let response = reqwest::get(&request_url).await?;
 
     let s: String = response.json().await?;
-    println!("{}", s);
+    println!("{s}");
     Ok(true)
 }
 
@@ -93,10 +93,8 @@ async fn print_dot_each_second() {
 }
 
 async fn get_game_data(base: u8, column_count: u8) -> Result<Game, anyhow::Error> {
-    let request_url = format!(
-        "http://localhost:3000/generate?base={}&column_count={}",
-        base, column_count
-    );
+    let request_url =
+        format!("http://localhost:3000/generate?base={base}&column_count={column_count}");
 
     let response = reqwest::get(&request_url).await?;
 
@@ -128,7 +126,7 @@ pub fn display_criterias(game: &Game) {
     for (i, criteria) in game.criterias.iter().enumerate() {
         println!(" {:01}- {}", i, criteria.description);
         for rule in criteria.rules.iter() {
-            println!("\t{}", rule);
+            println!("\t{rule}");
         }
     }
 }
