@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crossterm::event::KeyCode;
 use enigmind_lib::setup::Game;
 use tui::style::Color;
@@ -9,7 +7,7 @@ use crate::input::{Events, InputEvent};
 pub struct GameLog {
     pub code: String,
     pub crit_index: u8,
-    pub result: Status,
+    pub result: bool,
 }
 
 impl GameLog {
@@ -17,31 +15,24 @@ impl GameLog {
         Self {
             code: code.to_string(),
             crit_index,
-            result: Status(Some(res)),
+            result: res,
         }
     }
 }
 
-#[derive(Clone, Copy)]
-
-pub struct Status(Option<bool>);
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    None,
+    Valid,
+    Error,
+}
 
 impl From<Status> for Color {
     fn from(value: Status) -> Self {
-        match value.0 {
-            None => Color::DarkGray,
-            Some(true) => Color::Green,
-            Some(false) => Color::Red,
-        }
-    }
-}
-
-impl Display for Status {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            None => write!(f, "     "),
-            Some(true) => write!(f, "Right"),
-            Some(false) => write!(f, "Wrong"),
+        match value {
+            Status::None => Color::DarkGray,
+            Status::Valid => Color::Green,
+            Status::Error => Color::Red,
         }
     }
 }
@@ -51,10 +42,9 @@ pub struct GameData {
     pub logs: Vec<GameLog>,
     pub command_line: String,
     pub last_command_line: String,
-    pub command_result: Option<bool>,
+    pub command_status: Status,
     pub quit: bool,
     pub striked: Vec<Vec<(char, bool)>>,
-    pub solution: Status,
 }
 
 impl GameData {
@@ -71,10 +61,9 @@ impl GameData {
             logs: Vec::new(),
             command_line: String::new(),
             last_command_line: String::new(),
-            command_result: None,
+            command_status: Status::None,
             quit: false,
             striked,
-            solution: Status(None),
         }
     }
 
@@ -84,11 +73,11 @@ impl GameData {
                 KeyCode::Esc => self.quit = true,
                 KeyCode::Char(c) => {
                     self.command_line.push(c);
-                    self.command_result = None
+                    self.command_status = Status::None
                 }
                 KeyCode::Backspace => {
                     self.command_line.pop();
-                    self.command_result = None;
+                    self.command_status = Status::None;
                 }
                 KeyCode::Up => self.command_line = self.last_command_line.clone(),
                 KeyCode::Enter => self.process_commands(),
@@ -100,82 +89,83 @@ impl GameData {
 
 impl GameData {
     fn process_commands(&mut self) {
-        self.command_result = Some(false);
         self.last_command_line = self.command_line.clone();
 
-        if self.command_line.starts_with("/quit") {
-            self.process_quit_command();
-        } else if self.command_line.starts_with("/test") {
-            self.process_test_command();
-        } else if self.command_line.starts_with("/bid") {
-            self.process_bid_command();
-        } else if self.command_line.starts_with("/strike") {
-            self.process_strike_command(true);
-        } else if self.command_line.starts_with("/unstrike") {
-            self.process_strike_command(false);
+        let command = self.command_line.split(' ').next().unwrap();
+
+        self.command_status = match command {
+            "q" => self.process_quit_command(),
+            "t" => self.process_test_command(),
+            "b" => self.process_bid_command(),
+            "s" => self.process_strike_command(true),
+            "u" => self.process_strike_command(false),
+            _ => Status::Error,
+        };
+
+        if self.command_status == Status::Valid {
+            self.command_line.clear();
         }
     }
 
-    fn process_strike_command(&mut self, strike: bool) {
-        self.command_result = Some(false);
+    fn process_strike_command(&mut self, strike: bool) -> Status {
         let mut args = self.command_line.split(' ');
         args.next();
 
-        for arg in args.clone().into_iter() {
+        for arg in args.clone() {
             if arg.len() != 2 {
-                return;
+                return Status::Error;
             }
 
             let column_str = arg.chars().nth(0).unwrap();
             let value_str = arg.chars().nth(1).unwrap();
 
             if !column_str.is_alphabetic() || !value_str.is_numeric() {
-                return;
+                return Status::Error;
             }
 
             if !self.game.is_column_compatible(column_str) {
-                return;
+                return Status::Error;
             }
 
             let value = value_str.to_digit(10).unwrap() as u8;
             if !self.game.is_value_compatible(value) {
-                return;
+                return Status::Error;
             }
         }
 
-        for arg in args.into_iter() {
-            let column_index = self.game.to_column_index(arg.chars().nth(0).unwrap());
+        for arg in args {
+            let column_index = self
+                .game
+                .to_column_index(arg.chars().nth(0).unwrap().to_ascii_uppercase());
             let value =
                 self.striked.len() - 1 - arg.chars().nth(1).unwrap().to_digit(10).unwrap() as usize;
 
             self.striked[value][column_index as usize].1 = strike;
         }
 
-        self.command_result = Some(true);
+        Status::Valid
     }
 
-    fn process_quit_command(&mut self) {
-        self.command_line = String::new();
-        self.command_result = Some(true);
+    fn process_quit_command(&mut self) -> Status {
         self.quit = true;
+        Status::Valid
     }
 
-    fn process_test_command(&mut self) {
-        self.command_result = Some(false);
+    fn process_test_command(&mut self) -> Status {
         let mut args = self.command_line.split(' ');
         args.next();
         let code_str = args.next().unwrap_or("");
         let criterias = args.next().unwrap_or("");
         if code_str.is_empty() || criterias.is_empty() {
-            return;
+            return Status::Error;
         }
         let code = code_str.to_string().into();
         if !self.game.is_solution_compatible(&code) {
-            return;
+            return Status::Error;
         }
         for crit in criterias.chars() {
             if !crit.is_numeric() {
-                return;
+                return Status::Error;
             }
 
             let num = crit.to_digit(10);
@@ -183,10 +173,10 @@ impl GameData {
             match num {
                 Some(n) => {
                     if n as usize >= self.game.criterias.len() {
-                        return;
+                        return Status::Error;
                     }
                 }
-                None => return,
+                None => return Status::Error,
             };
         }
         for crit in criterias.chars() {
@@ -201,24 +191,22 @@ impl GameData {
             self.logs
                 .push(GameLog::new(code_str, crit_index as u8, res));
         }
-        self.command_result = Some(true);
-        self.command_line = String::new();
+
+        Status::Valid
     }
 
-    fn process_bid_command(&mut self) {
-        self.command_result = Some(false);
+    fn process_bid_command(&mut self) -> Status {
         let mut args = self.command_line.split(' ');
         args.next();
         let solution_str = args.next().unwrap_or("");
         if solution_str.is_empty() {
-            return;
+            return Status::Error;
         }
         let solution = solution_str.to_string().into();
         if !self.game.is_solution_compatible(&solution) {
-            return;
+            return Status::Error;
         }
 
-        self.command_result = Some(self.game.code == solution);
-        self.command_line = String::new();
+        Status::Valid
     }
 }

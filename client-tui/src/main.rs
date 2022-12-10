@@ -1,3 +1,7 @@
+#![deny(warnings)]
+#![deny(clippy::all)]
+#![allow(clippy::iter_nth_zero)]
+
 mod draw;
 mod game_data;
 mod input;

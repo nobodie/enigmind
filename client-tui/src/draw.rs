@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use tui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -9,7 +7,33 @@ use tui::{
     Frame,
 };
 
-use crate::game_data::GameData;
+use crate::game_data::{GameData, Status};
+
+fn centered(r: Rect, size: (u16, u16)) -> Rect {
+    let solution_vert_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Length((r.height - size.1) / 2),
+                Constraint::Length(size.1),
+                Constraint::Length((r.height - size.1) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Length((r.width - size.0) / 2),
+                Constraint::Length(size.0),
+                Constraint::Length((r.width - size.0) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(solution_vert_layout[1])[1]
+}
 
 pub fn draw<B>(frame: &mut Frame<B>, gd: &GameData)
 where
@@ -17,29 +41,7 @@ where
 {
     let size = frame.size();
 
-    let solution_vert_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Percentage(50),
-                Constraint::Length(3),
-                Constraint::Percentage(50),
-            ]
-            .as_ref(),
-        )
-        .split(size);
-
-    let solution_horiz_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(
-            [
-                Constraint::Ratio(1, 2),
-                Constraint::Length(20),
-                Constraint::Ratio(1, 2),
-            ]
-            .as_ref(),
-        )
-        .split(solution_vert_layout[1]);
+    let centered_layout = centered(size, (30, 10));
 
     let general_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -103,10 +105,10 @@ where
     render_tries(frame, gd, tries_strikes_layout[0]);
     render_strikes(frame, gd, tries_strikes_layout[1]);
 
-    let command_line_color = match gd.command_result {
-        None => Color::DarkGray,
-        Some(true) => Color::Green,
-        Some(false) => Color::Red,
+    let command_line_color = match gd.command_status {
+        Status::None => Color::DarkGray,
+        Status::Valid => Color::Green,
+        Status::Error => Color::Red,
     };
 
     render_block_with_title(
@@ -117,15 +119,9 @@ where
         command_line_color,
     );
 
-    clear_block(frame, solution_horiz_layout[1]);
+    clear_block(frame, centered_layout);
 
-    render_block_with_title(
-        frame,
-        solution_horiz_layout[1],
-        "Solution",
-        "Bravo",
-        Color::Green,
-    );
+    render_block_with_title(frame, centered_layout, "Solution", "Bravo", Color::Green);
 }
 
 fn render_block_with_title<B>(frame: &mut Frame<B>, rect: Rect, title: &str, text: &str, col: Color)
@@ -158,7 +154,48 @@ fn render_strikes<B>(frame: &mut Frame<B>, gd: &GameData, rect: Rect)
 where
     B: Backend,
 {
-    frame.render_widget(draw_strikes(gd), rect);
+    let mut rows = Vec::new();
+
+    for row in gd.striked.iter() {
+        let mut columns: Vec<Cell> = Vec::new();
+
+        for (value, _striked) in row.iter() {
+            let style = match _striked {
+                true => Style::default()
+                    .bg(Color::Red)
+                    .add_modifier(Modifier::CROSSED_OUT),
+                false => Style::default().bg(Color::Green),
+            };
+            columns.push(Cell::from(Span::styled(value.to_string(), style)));
+        }
+
+        rows.push(Row::new(columns));
+    }
+
+    let header: Vec<Cell> = gd
+        .game
+        .configuration
+        .get_all_columns()
+        .iter()
+        .map(|col| Cell::from(Span::styled(col.to_string(), Style::default())))
+        .collect();
+
+    let constrains = vec![Constraint::Length(1); gd.game.configuration.column_count as usize];
+
+    let table = Table::new(rows)
+        .header(Row::new(header))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default())
+                .style(Style::default())
+                .border_type(BorderType::Plain)
+                .title("Strikes"),
+        )
+        .widths(&constrains)
+        .column_spacing(0);
+
+    frame.render_widget(table, rect);
 }
 
 fn render_criterias<B>(frame: &mut Frame<B>, gd: &GameData, rect: Rect)
@@ -195,7 +232,7 @@ where
 
         frame.render_widget(
             draw_block_with_title(
-                format!("Criteria {}", id).as_str(),
+                format!("Criteria {id}").as_str(),
                 crit.description.as_str(),
                 Color::Gray,
             ),
@@ -208,20 +245,26 @@ fn draw_tries(gd: &GameData) -> Table {
     let mut rows = Vec::new();
 
     for log in gd.logs.iter() {
+        let color = match log.result {
+            true => Color::Green,
+            false => Color::Red,
+        };
+
+        let msg = match log.result {
+            true => "Right",
+            false => "Wrong",
+        }
+        .to_owned();
+
         rows.push(Row::new(vec![
-            Cell::from(Span::styled(
-                log.code.as_str(),
-                Style::default().fg(log.result.into()),
-            )),
+            Cell::from(Span::styled(log.code.as_str(), Style::default().fg(color))),
             Cell::from(Span::styled(
                 log.crit_index.to_string(),
-                Style::default().fg(log.result.into()),
+                Style::default().fg(color),
             )),
             Cell::from(Span::styled(
-                log.result.to_string(),
-                Style::default()
-                    .fg(log.result.into())
-                    .add_modifier(Modifier::REVERSED),
+                msg,
+                Style::default().fg(color).add_modifier(Modifier::REVERSED),
             )),
         ]));
     }
@@ -248,49 +291,6 @@ fn draw_tries(gd: &GameData) -> Table {
             Constraint::Length(6),
         ])
         .column_spacing(1)
-}
-
-fn draw_strikes(gd: &GameData) -> Table {
-    let mut rows = Vec::new();
-
-    for row in gd.striked.iter() {
-        let mut columns: Vec<Cell> = Vec::new();
-
-        for (value, _striked) in row.iter() {
-            let style = match _striked {
-                true => Style::default()
-                    .bg(Color::Red)
-                    .add_modifier(Modifier::CROSSED_OUT),
-                false => Style::default().bg(Color::Green),
-            };
-            columns.push(Cell::from(Span::styled(value.to_string(), style)));
-        }
-
-        rows.push(Row::new(columns));
-    }
-
-    let header: Vec<Cell> = gd
-        .game
-        .configuration
-        .get_all_columns()
-        .iter()
-        .map(|col| Cell::from(Span::styled(col.to_string(), Style::default())))
-        .collect();
-
-    let constrains = vec![Constraint::Length(1); gd.game.configuration.column_count as usize];
-
-    Table::new(rows)
-        .header(Row::new(header))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default())
-                .style(Style::default())
-                .border_type(BorderType::Plain)
-                .title("Strikes"),
-        )
-        .widths(&constrains)
-        .column_spacing(0)
 }
 
 fn draw_block_with_title<'a>(title: &'a str, text: &'a str, border_colour: Color) -> Paragraph<'a> {
