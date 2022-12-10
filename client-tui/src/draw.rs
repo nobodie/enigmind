@@ -41,7 +41,7 @@ where
 {
     let size = frame.size();
 
-    let centered_layout = centered(size, (30, 10));
+    let centered_layout = centered(size, (19, 4));
 
     let general_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -119,9 +119,18 @@ where
         command_line_color,
     );
 
-    clear_block(frame, centered_layout);
+    if let Some(val) = gd.solution {
+        let (color, mut text) = match val {
+            true => (Color::Green, "Well done!".to_string()),
+            false => (Color::Red, "You failed!".to_string()),
+        };
 
-    render_block_with_title(frame, centered_layout, "Solution", "Bravo", Color::Green);
+        text.push_str("\nEnter to continue");
+
+        clear_block(frame, centered_layout);
+
+        render_block_with_title(frame, centered_layout, "Solution", &text, color);
+    }
 }
 
 fn render_block_with_title<B>(frame: &mut Frame<B>, rect: Rect, title: &str, text: &str, col: Color)
@@ -172,13 +181,12 @@ where
         rows.push(Row::new(columns));
     }
 
-    let header: Vec<Cell> = gd
+    let header = gd
         .game
         .configuration
         .get_all_columns()
-        .iter()
-        .map(|col| Cell::from(Span::styled(col.to_string(), Style::default())))
-        .collect();
+        .into_iter()
+        .map(|col| Cell::from(Span::styled(col.to_string(), Style::default())));
 
     let constrains = vec![Constraint::Length(1); gd.game.configuration.column_count as usize];
 

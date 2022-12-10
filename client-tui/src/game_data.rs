@@ -45,6 +45,7 @@ pub struct GameData {
     pub command_status: Status,
     pub quit: bool,
     pub striked: Vec<Vec<(char, bool)>>,
+    pub solution: Option<bool>,
 }
 
 impl GameData {
@@ -64,6 +65,7 @@ impl GameData {
             command_status: Status::None,
             quit: false,
             striked,
+            solution: None,
         }
     }
 
@@ -80,7 +82,10 @@ impl GameData {
                     self.command_status = Status::None;
                 }
                 KeyCode::Up => self.command_line = self.last_command_line.clone(),
-                KeyCode::Enter => self.process_commands(),
+                KeyCode::Enter => {
+                    self.solution = None;
+                    self.process_commands()
+                }
                 _ => (),
             }
         }
@@ -97,8 +102,7 @@ impl GameData {
             "q" => self.process_quit_command(),
             "t" => self.process_test_command(),
             "b" => self.process_bid_command(),
-            "s" => self.process_strike_command(true),
-            "u" => self.process_strike_command(false),
+            "s" => self.process_toggle_command(),
             _ => Status::Error,
         };
 
@@ -107,7 +111,7 @@ impl GameData {
         }
     }
 
-    fn process_strike_command(&mut self, strike: bool) -> Status {
+    fn process_toggle_command(&mut self) -> Status {
         let mut args = self.command_line.split(' ');
         args.next();
 
@@ -116,7 +120,7 @@ impl GameData {
                 return Status::Error;
             }
 
-            let column_str = arg.chars().nth(0).unwrap();
+            let column_str = arg.chars().nth(0).unwrap().to_ascii_uppercase();
             let value_str = arg.chars().nth(1).unwrap();
 
             if !column_str.is_alphabetic() || !value_str.is_numeric() {
@@ -140,7 +144,7 @@ impl GameData {
             let value =
                 self.striked.len() - 1 - arg.chars().nth(1).unwrap().to_digit(10).unwrap() as usize;
 
-            self.striked[value][column_index as usize].1 = strike;
+            self.striked[value][column_index as usize].1 ^= true;
         }
 
         Status::Valid
@@ -206,6 +210,8 @@ impl GameData {
         if !self.game.is_solution_compatible(&solution) {
             return Status::Error;
         }
+
+        self.solution = Some(solution == self.game.code);
 
         Status::Valid
     }
