@@ -42,6 +42,21 @@ impl Game {
         }
         true
     }
+
+    pub fn to_column_index(&self, column: char) -> u8 {
+        return (column as u8) - 65;
+    }
+
+    pub fn is_column_compatible(&self, column: char) -> bool {
+        if (column as u8) < 65 {
+            return false;
+        }
+        return (column as u8) - 65 < self.configuration.column_count;
+    }
+
+    pub fn is_value_compatible(&self, value: u8) -> bool {
+        return value < self.configuration.base;
+    }
 }
 
 impl fmt::Display for Game {
