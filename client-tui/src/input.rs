@@ -10,7 +10,7 @@ pub enum InputEvent {
     /// An input event occurred.
     Input(KeyEvent),
     ///
-    LeftClick(u16, u16),
+    Click(MouseButton, u16, u16),
     /// An tick event occurred.
     Tick,
 }
@@ -37,7 +37,8 @@ impl Events {
                             if let event::MouseEventKind::Down(MouseButton::Left) = mouse_event.kind
                             {
                                 event_tx
-                                    .send(InputEvent::LeftClick(
+                                    .send(InputEvent::Click(
+                                        MouseButton::Left,
                                         mouse_event.column,
                                         mouse_event.row,
                                     ))

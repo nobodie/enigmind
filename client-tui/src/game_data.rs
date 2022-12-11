@@ -1,6 +1,6 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseButton};
 use enigmind_lib::setup::Game;
-use tui::style::Color;
+use tui::{layout::Rect, style::Color};
 
 use crate::input::{Events, InputEvent};
 
@@ -37,6 +37,13 @@ impl From<Status> for Color {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ClickAction {
+    ToggleStrike(u16, u16),
+    ToggleCriteriaRule(u16, u16),
+    CloseSolutionWidget,
+}
+
 pub struct GameData {
     pub game: Game,
     pub logs: Vec<GameLog>,
@@ -46,6 +53,8 @@ pub struct GameData {
     pub quit: bool,
     pub striked: Vec<Vec<(char, bool)>>,
     pub solution: Option<bool>,
+    pub criterias_state: Vec<Vec<bool>>,
+    pub click_areas: Vec<(Rect, ClickAction)>,
 }
 
 impl GameData {
@@ -57,6 +66,12 @@ impl GameData {
             striked.push(line);
         }
 
+        let mut criterias_state = Vec::new();
+
+        for crit in game.criterias.iter() {
+            criterias_state.push(vec![true; crit.rules.len()]);
+        }
+
         Self {
             game,
             logs: Vec::new(),
@@ -66,12 +81,14 @@ impl GameData {
             quit: false,
             striked,
             solution: None,
+            click_areas: Vec::new(),
+            criterias_state,
         }
     }
 
     pub fn handle_events(&mut self, events: &Events) {
-        if let InputEvent::Input(key_event) = events.next().unwrap() {
-            match key_event.code {
+        match events.next().unwrap() {
+            InputEvent::Input(key_event) => match key_event.code {
                 KeyCode::Esc => self.quit = true,
                 KeyCode::Char(c) => {
                     self.command_line.push(c);
@@ -87,12 +104,38 @@ impl GameData {
                     self.process_commands()
                 }
                 _ => (),
-            }
-        }
+            },
+            InputEvent::Click(mb, x, y) => self.process_click(mb, x, y),
+            InputEvent::Tick => (),
+        };
     }
 }
 
 impl GameData {
+    fn process_click(&mut self, mb: MouseButton, x: u16, y: u16) {
+        if mb == MouseButton::Left {
+            for (rect, action) in self.click_areas.clone().into_iter().rev() {
+                if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
+                {
+                    self.process_click_action(action);
+                    return;
+                }
+            }
+        }
+    }
+
+    fn process_click_action(&mut self, action: ClickAction) {
+        match action {
+            ClickAction::ToggleStrike(x, y) => {
+                self.striked[y as usize][x as usize].1 ^= true;
+            }
+            ClickAction::ToggleCriteriaRule(crit, rule) => {
+                self.criterias_state[crit as usize][rule as usize] ^= true
+            }
+            ClickAction::CloseSolutionWidget => self.solution = None,
+        }
+    }
+
     fn process_commands(&mut self) {
         self.last_command_line = self.command_line.clone();
 

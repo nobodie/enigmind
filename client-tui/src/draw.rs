@@ -7,7 +7,7 @@ use tui::{
     Frame,
 };
 
-use crate::game_data::{GameData, Status};
+use crate::game_data::{ClickAction, GameData, Status};
 
 fn centered(r: Rect, size: (u16, u16)) -> Rect {
     let solution_vert_layout = Layout::default()
@@ -35,10 +35,12 @@ fn centered(r: Rect, size: (u16, u16)) -> Rect {
         .split(solution_vert_layout[1])[1]
 }
 
-pub fn draw<B>(frame: &mut Frame<B>, gd: &GameData)
+pub fn draw<B>(frame: &mut Frame<B>, gd: &mut GameData)
 where
     B: Backend,
 {
+    gd.click_areas.clear();
+
     let size = frame.size();
 
     let centered_layout = centered(size, (19, 4));
@@ -130,6 +132,8 @@ where
         clear_block(frame, centered_layout);
 
         render_block_with_title(frame, centered_layout, "Solution", &text, color);
+        gd.click_areas
+            .push((centered_layout, ClickAction::CloseSolutionWidget));
     }
 }
 
@@ -159,16 +163,16 @@ where
     frame.render_widget(draw_tries(gd), rect);
 }
 
-fn render_strikes<B>(frame: &mut Frame<B>, gd: &GameData, rect: Rect)
+fn render_strikes<B>(frame: &mut Frame<B>, gd: &mut GameData, rect: Rect)
 where
     B: Backend,
 {
     let mut rows = Vec::new();
 
-    for row in gd.striked.iter() {
+    for (y, row) in gd.striked.iter().enumerate() {
         let mut columns: Vec<Cell> = Vec::new();
 
-        for (value, _striked) in row.iter() {
+        for (x, (value, _striked)) in row.iter().enumerate() {
             let style = match _striked {
                 true => Style::default()
                     .bg(Color::Red)
@@ -176,6 +180,10 @@ where
                 false => Style::default().bg(Color::Green),
             };
             columns.push(Cell::from(Span::styled(value.to_string(), style)));
+
+            let cell_rect = Rect::new(rect.x + 1 + x as u16, rect.y + 2 + y as u16, 1, 1);
+            gd.click_areas
+                .push((cell_rect, ClickAction::ToggleStrike(x as u16, y as u16)));
         }
 
         rows.push(Row::new(columns));
@@ -206,7 +214,7 @@ where
     frame.render_widget(table, rect);
 }
 
-fn render_criterias<B>(frame: &mut Frame<B>, gd: &GameData, rect: Rect)
+fn render_criterias<B>(frame: &mut Frame<B>, gd: &mut GameData, rect: Rect)
 where
     B: Backend,
 {
@@ -234,18 +242,55 @@ where
 
         crit_array.push(crit_column);
     }
-    for (id, crit) in gd.game.criterias.iter().enumerate() {
-        let line = id / crit_grid_x;
-        let col = id % crit_grid_x;
+    for (crit_id, crit) in gd.game.criterias.iter().enumerate() {
+        let line = crit_id / crit_grid_x;
+        let col = crit_id % crit_grid_x;
 
-        frame.render_widget(
-            draw_block_with_title(
-                format!("Criteria {id}").as_str(),
-                crit.description.as_str(),
-                Color::Gray,
-            ),
-            crit_array[line][col],
-        );
+        let mut rows = Vec::new();
+
+        for (rule_id, rule) in crit.rules.iter().enumerate() {
+            let cell_rect = Rect::new(
+                crit_array[line][col].x + 1,
+                crit_array[line][col].y + 2 + rule_id as u16,
+                crit_array[line][col].width - 2,
+                1,
+            );
+
+            let color = match gd.criterias_state[crit_id][rule_id] {
+                true => Color::Green,
+                false => Color::Red,
+            };
+            rows.push(Row::new(vec![Cell::from(Span::styled(
+                rule.to_string(),
+                Style::default().fg(color),
+            ))]));
+
+            gd.click_areas.push((
+                cell_rect,
+                ClickAction::ToggleCriteriaRule(crit_id as u16, rule_id as u16),
+            ));
+        }
+
+        let header = Row::new(vec![Cell::from(Span::styled(
+            crit.description.as_str(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ))]);
+
+        let table = Table::new(rows)
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default())
+                    .style(Style::default())
+                    .border_type(BorderType::Plain)
+                    //.title(format!("Criteria {id}").as_str()),
+                    .title("Criteria x"),
+            )
+            .widths(&[Constraint::Min(100)])
+            .column_spacing(1);
+
+        frame.render_widget(table, crit_array[line][col]);
     }
 }
 
