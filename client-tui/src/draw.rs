@@ -116,7 +116,7 @@ where
     render_block_with_title(
         frame,
         general_layout[3],
-        "Command line (/test <code> <crits>) (/bid <solution>) (/quit)",
+        "Command line : t(est) <code> <crits>, b(id) <solution>, s(trike) <columns> <values>, q(uit)",
         &gd.command_line,
         command_line_color,
     );
@@ -276,6 +276,7 @@ where
             Style::default().add_modifier(Modifier::BOLD),
         ))]);
 
+        let crit_title = format!("Criteria {}", crit_id.clone());
         let table = Table::new(rows)
             .header(header)
             .block(
@@ -284,8 +285,7 @@ where
                     .border_style(Style::default())
                     .style(Style::default())
                     .border_type(BorderType::Plain)
-                    //.title(format!("Criteria {id}").as_str()),
-                    .title("Criteria x"),
+                    .title(crit_title),
             )
             .widths(&[Constraint::Min(100)])
             .column_spacing(1);

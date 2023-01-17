@@ -73,18 +73,14 @@ impl Rule {
                 Operator::Pair => {
                     let mut res = true;
                     for col in columns.iter() {
-                        if !(code.get(*col)? % 2) == 0 {
-                            res = false;
-                        }
+                        res &= (code.get(*col)? % 2) == 0;
                     }
                     res
                 }
                 Operator::Impair => {
                     let mut res = true;
                     for col in columns.iter() {
-                        if !(code.get(*col)? % 2) == 1 {
-                            res = false;
-                        }
+                        res &= (code.get(*col)? % 2) == 1;
                     }
                     res
                 }
